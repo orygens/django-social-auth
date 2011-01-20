@@ -182,8 +182,8 @@ class OrkutBackend(OAuthBackend):
         return {USERNAME: response['displayName'],
                 'email': response['emails'][0]['value'],
                 'fullname': response['displayName'],
-                'firstname': response['name']['givenName'],
-                'lastname': response['name']['familyName']}
+                'first_name': response['name']['givenName'],
+                'last_name': response['name']['familyName']}
 
 
 class FacebookBackend(OAuthBackend):
