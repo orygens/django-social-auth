@@ -109,8 +109,8 @@ class SocialAuthBackend(ModelBackend):
         changed if associating a new credential."""
         changed = False
         for name, value in details.iteritems():
-            # not update username if user already exists
-            if not new_user and name == USERNAME:
+            # never update username
+            if name == USERNAME:
                 continue
             if value and value != getattr(user, name, value):
                 setattr(user, name, value)
