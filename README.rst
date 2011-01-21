@@ -2,7 +2,7 @@
 Django Social Auth
 ==================
 
-Django Social Auth is an easy to setup social authentication/registration
+Django Social Auth is an easy to setup social authentication/authorization
 mechanism for Django projects.
 
 Crafted using base code from django-twitter-oauth_ and django-openid-auth_,
@@ -27,10 +27,15 @@ credentials, some features are:
   at the moment:
 
     * `Google OpenID`_
+    * `Google OAuth`_
     * `Yahoo OpenID`_
     * OpenId_ like myOpenID_
     * `Twitter OAuth`_
     * `Facebook OAuth`_
+
+  Some contributions added support for:
+
+    * `LiveJournal OpenID`_
     * `Orkut OAuth`_
 
 - Basic user data population and signaling, to allows custom fields values
@@ -52,6 +57,7 @@ Dependencies that must be meet to use the app:
 
 - Twitter and Facebook support demands an application registration
   on their corresponding sites.
+
 
 ------------
 Installation
@@ -92,23 +98,45 @@ Configuration
 - Add desired authentication backends to AUTHENTICATION_BACKENDS_ setting::
 
     AUTHENTICATION_BACKENDS = (
-        'social_auth.backends.TwitterBackend',
-        'social_auth.backends.FacebookBackend',
-        'social_auth.backends.OrkutBackend',
-        'social_auth.backends.GoogleBackend',
-        'social_auth.backends.YahooBackend',
+        'social_auth.backends.twitter.TwitterBackend',
+        'social_auth.backends.facebook.FacebookBackend',
+        'social_auth.backends.google.GoogleOAuthBackend',
+        'social_auth.backends.google.GoogleBackend',
+        'social_auth.backends.yahoo.YahooBackend',
+        'social_auth.backends.contrib.LiveJournalBackend',
+        'social_auth.backends.contrib.orkut.OrkutBackend',
         'social_auth.backends.OpenIDBackend',
         'django.contrib.auth.backends.ModelBackend',
     )
 
-- Setup Twitter and Facebook keys (see OAuth_ section for details)::
+  Note: this was introduced in a recent change and it's not backward
+  compatible, take into account that saved sessions won't be able to login
+  because the backend string stored in session (like backends.TwitterBackend)
+  won't match the new paths.
 
-    TWITTER_CONSUMER_KEY    = ''
-    TWITTER_CONSUMER_SECRET = ''
-    FACEBOOK_APP_ID         = ''
-    FACEBOOK_API_SECRET     = ''
-    ORKUT_CONSUMER_KEY      = ''
-    ORKUT_CONSUMER_SECRET   = ''
+- The app will try to import custom backends from the sources defined in::
+
+    SOCIAL_AUTH_IMPORT_BACKENDS = (
+        'myproy.social_auth_extra_services',
+    )
+
+  This way it's easier to add new providers, check the already defined ones
+  in social_auth.backends for examples.
+
+  Take into account that backends must be defined in AUTHENTICATION_BACKENDS_
+  or Django won't pick them when trying to authenticate the user.
+
+- Setup Twitter, Facebook, Orkut and Google OAuth keys (see OAuth_ section
+  for details)::
+
+    TWITTER_CONSUMER_KEY     = ''
+    TWITTER_CONSUMER_SECRET  = ''
+    FACEBOOK_APP_ID          = ''
+    FACEBOOK_API_SECRET      = ''
+    ORKUT_CONSUMER_KEY       = ''
+    ORKUT_CONSUMER_SECRET    = ''
+    GOOGLE_CONSUMER_KEY      = ''
+    GOOGLE_CONSUMER_SECRET   = ''
 
 - Setup login URLs::
 
@@ -121,14 +149,14 @@ Configuration
 - Configure authentication and association complete URL names to avoid
   possible clashes::
 
-    SOCIAL_AUTH_COMPLETE_URL_NAME  = 'namespace:complete'
-    SOCIAL_AUTH_ASSOCIATE_URL_NAME = 'namespace:associate_complete'
+    SOCIAL_AUTH_COMPLETE_URL_NAME  = 'complete'
+    SOCIAL_AUTH_ASSOCIATE_URL_NAME = 'associate_complete'
 
 - Add URLs entries::
 
     urlpatterns = patterns('',
         ...
-        url(r'', include('social_auth.urls', namespace='social')),
+        url(r'', include('social_auth.urls')),
         ...
     )
 
@@ -186,15 +214,21 @@ values from authorization service provider, this apply to new users and already
 existent ones. This is useful to update custom user fields or `User Profiles`_,
 for example, to store user gender, location, etc. Example::
 
-    from django.dispatch import receiver
+    from social_auth.signals import pre_update
+    from social_auth.backends.facebook import FacebookBackend
 
-    from social_auth.signals import pre_save
-    from social_auth.backends import FacebookBackend
-
-    @receiver(pre_save, sender=FacebookBackend)
     def facebook_extra_values(sender, user, response, details):
         user.gender = response.get('gender')
         return True
+
+    pre_update.connect(facebook_extra_values, sender=FacebookBackend)
+
+New data updating is made automatically but could be disabled and left only to
+signal handler if this setting value::
+
+    SOCIAL_AUTH_CHANGE_SIGNAL_ONLY = False
+
+is set to True.
 
 
 ------
@@ -210,8 +244,10 @@ OAuth
 -----
 OAuth_ communication demands a set of keys exchange to validate the client
 authenticity prior to user approbation. Twitter, Facebook and Orkut
-facilitates these keys by application registration, see next sections for
-details.
+facilitates these keys by application registration, Google works the same,
+but provides the option for unregisterd applications.
+
+Check next sections for details.
 
 
 -------
@@ -230,7 +266,9 @@ Further documentation at `Twitter development resources`_:
       TWITTER_CONSUMER_KEY
       TWITTER_CONSUMER_SECRET
 
-- You don't need to specify the URL callback
+- You need to specify an URL callback or the application will be marked as
+  Client type instead of the Browser. Almost any dummy value will work if
+  you plan some test.
 
 
 --------
@@ -247,6 +285,10 @@ Further documentation at `Facebook development resources`_:
       FACEBOOK_APP_ID
       FACEBOOK_API_SECRET
 
+- also it's possible to define extra permissions with::
+
+     FACEBOOK_EXTENDED_PERMISSIONS = [...]
+
 
 -----
 Orkut
@@ -261,6 +303,48 @@ your consumer_key and consumer_secret keys.
 
       ORKUT_CONSUMER_KEY
       ORKUT_CONSUMER_SECRET
+
+- add any needed extra data to::
+
+      ORKUT_EXTRA_DATA = ''
+
+- configure extra scopes in::
+
+      ORKUT_EXTRA_SCOPES = [...]
+
+
+------------
+Google OAuth
+------------
+Google provides "Consumer Key" and "Consumer Secret" keys to
+registered applications, but also allows unregistered application to
+use their authorization system with, but beware that this method
+will display a security banner to the user telling that the application
+is not trusted.
+
+Check `Google OAuth`_ and make your choice.
+
+- fill "Consumer Key" and "Consumer Secret" values::
+
+      GOOGLE_CONSUMER_KEY
+      GOOGLE_CONSUMER_SECRET
+
+anonymous values will be used if not configured as described in their
+`OAuth reference`_
+
+
+- configure the display name to be used in the "grant permissions" dialog
+  that Google will display to users in::
+
+      GOOGLE_DISPLAY_NAME = ''
+
+  shows 'Social Auth' by default, but that might not suite your application.
+
+- setup any needed extra scope in::
+
+      GOOGLE_OAUTH_EXTRA_SCOPE = [...]
+
+check which Apps are included in their `Google Data Protocol Directory`_
 
 
 ----
@@ -285,6 +369,15 @@ Attributions to whom deserves:
 - jezdez_ (Jannis Leidel):
 
   - Improvements and documentation update
+
+- alfredo_ (Alfredo Ramirez)
+
+  - Facebook and Doc improvements
+
+- mattucf_ (Matt Brown)
+
+  - Twitter and OAuth improvements
+
 
 
 ----------
@@ -325,6 +418,9 @@ Base work is copyrighted by:
 .. _Google support: http://www.google.com/support/a/bin/answer.py?hl=en&answer=162105
 .. _Orkut API:  http://code.google.com/apis/orkut/docs/rest/developers_guide_protocol.html#Authenticating
 .. _Google OpenID: http://code.google.com/apis/accounts/docs/OpenID.html
+.. _Google OAuth: http://code.google.com/apis/accounts/docs/OAuth.html
+.. _Google Data Protocol Directory: http://code.google.com/apis/gdata/docs/directory.html
+.. _OAuth reference: http://code.google.com/apis/accounts/docs/OAuth_ref.html#SigningOAuth
 .. _Yahoo OpenID: http://openid.yahoo.com/
 .. _Twitter OAuth: http://dev.twitter.com/pages/oauth_faq
 .. _Facebook OAuth: http://developers.facebook.com/docs/authentication/
@@ -336,3 +432,6 @@ Base work is copyrighted by:
 .. _caioariede: https://github.com/caioariede
 .. _krvss: https://github.com/krvss
 .. _jezdez: https://github.com/jezdez
+.. _alfredo: https://github.com/alfredo
+.. _mattucf: https://github.com/mattucf
+.. _LiveJournal OpenID: http://www.livejournal.com/support/faqbrowse.bml?faqid=283
