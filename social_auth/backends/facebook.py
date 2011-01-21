@@ -9,7 +9,9 @@ Extended permissions are supported by defining FACEBOOK_EXTENDED_PERMISSIONS
 setting, it must be a list of values to request.
 """
 import cgi
+import re
 import urllib
+import urllib2
 
 from django.conf import settings
 from django.utils import simplejson
@@ -31,7 +33,10 @@ class FacebookBackend(OAuthBackend):
 
     def get_user_details(self, response):
         """Return user details from Facebook account"""
-        return {USERNAME: response['name'],
+        username = response.get('link', response.get("name"))
+        if '/' in username:
+          username = username.split('/')[-1]
+        return {USERNAME: re.sub(r'[^a-z0-9_]', "", username.lower()),
                 'email': response.get('email', ''),
                 'fullname': response['name'],
                 'first_name': response.get('first_name', ''),
@@ -56,7 +61,7 @@ class FacebookAuth(BaseOAuth):
                                 'redirect_uri': self.redirect_uri,
                                 'client_secret': settings.FACEBOOK_API_SECRET,
                                 'code': self.request.GET['code']})
-            response = cgi.parse_qs(urllib.urlopen(url).read())
+            response = cgi.parse_qs(urllib2.urlopen(url).read())
 
             access_token = response['access_token'][0]
             data = self.user_data(access_token)
@@ -75,7 +80,7 @@ class FacebookAuth(BaseOAuth):
         params = {'access_token': access_token}
         url = FACEBOOK_CHECK_AUTH + '?' + urllib.urlencode(params)
         try:
-            return simplejson.load(urllib.urlopen(url))
+            return simplejson.load(urllib2.urlopen(url))
         except simplejson.JSONDecodeError:
             return None
 
