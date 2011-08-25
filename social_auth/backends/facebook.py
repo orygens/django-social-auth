@@ -33,10 +33,12 @@ class FacebookBackend(OAuthBackend):
 
     def get_user_details(self, response):
         """Return user details from Facebook account"""
-        username = response.get('link', response.get("name"))
-        if '/' in username:
-          username = username.split('/')[-1]
-        return {USERNAME: re.sub(r'[^a-z0-9_]', "", username.lower()),
+        username = response.get('username', None)
+
+        if username and re.match(r'^profilephpid', username):
+            username = re.sub(r'\s+', '', response['name'])
+
+        return {USERNAME: re.sub(r'[^a-z0-9_]', '', username.lower()),
                 'email': response.get('email', ''),
                 'fullname': response['name'],
                 'first_name': response.get('first_name', ''),
